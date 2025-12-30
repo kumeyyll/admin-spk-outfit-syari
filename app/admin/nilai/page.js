@@ -4,9 +4,9 @@ import React, { useEffect, useState, useMemo } from "react";
 import { createPortal } from "react-dom";
 
 export default function DataNilaiPage() {
-  const API_NILAI = "http://localhost:3001/api/nilai_outfit";
-  const API_KRITERIA = "http://localhost:3001/api/kriteria";
-  const API_OUTFIT = "http://localhost:3001/api/outfit";
+  const API_NILAI = "/api/nilai_outfit";
+  const API_KRITERIA = "/api/kriteria";
+  const API_OUTFIT = "/api/outfit";
 
   const [nilai, setNilai] = useState([]);
   const [kriteria, setKriteria] = useState([]);

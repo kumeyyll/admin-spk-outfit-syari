@@ -1,147 +1,148 @@
 import { NextResponse } from "next/server";
-import mysql from "mysql2/promise";
-import fs from "fs";
-import path from "path";
+import { createClient } from "@supabase/supabase-js";
 
-const dbConfig = {
-  host: "localhost",
-  user: "root",
-  password: "",
-  database: "spk_outfit_syari",
-};
-
-const pool = mysql.createPool(dbConfig);
-
-const uploadDir = path.join(process.cwd(), "public/uploads");
-if (!fs.existsSync(uploadDir)) fs.mkdirSync(uploadDir, { recursive: true });
+const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL,
+  process.env.SUPABASE_SERVICE_ROLE_KEY // ⚠️ SERVER ONLY
+);
 
 /* ================= GET ================= */
 export async function GET() {
-  const conn = await pool.getConnection();
-  const [rows] = await conn.query(
-    "SELECT * FROM outfit ORDER BY id_outfit ASC"
-  );
-  conn.release();
-  return NextResponse.json({ data: rows });
+  const { data, error } = await supabase
+    .from("outfit")
+    .select("*")
+    .order("id_outfit", { ascending: true });
+
+  if (error) {
+    return NextResponse.json({ error: error.message }, { status: 500 });
+  }
+
+  return NextResponse.json({ data });
 }
 
 /* ================= POST ================= */
 export async function POST(req) {
   const formData = await req.formData();
-
   const file = formData.get("gambar");
-  const filename = file
-    ? `${Date.now()}-${file.name.replace(/\s+/g, "_")}`
-    : null;
 
-  if (file) {
-    const bytes = await file.arrayBuffer();
-    fs.writeFileSync(path.join(uploadDir, filename), Buffer.from(bytes));
+  let fileName = null;
+
+  if (file && file.size > 0) {
+    const ext = file.name.split(".").pop();
+    fileName = `${Date.now()}.${ext}`;
+
+    const { error: uploadError } = await supabase.storage
+      .from("outfit-images")
+      .upload(fileName, file, {
+        contentType: file.type,
+      });
+
+    if (uploadError) {
+      return NextResponse.json({ error: uploadError.message }, { status: 500 });
+    }
   }
 
-  const conn = await pool.getConnection();
-  await conn.query(
-    `INSERT INTO outfit 
-    (kode_outfit, nama_outfit, harga, bahan, warna, gaya, gambar)
-    VALUES (?, ?, ?, ?, ?, ?, ?)`,
-    [
-      formData.get("kode_outfit"),
-      formData.get("nama_outfit"),
-      formData.get("harga"),
-      formData.get("bahan"),
-      formData.get("warna"),
-      formData.get("gaya"),
-      filename,
-    ]
-  );
-  conn.release();
+  const { error } = await supabase.from("outfit").insert([
+    {
+      kode_outfit: formData.get("kode_outfit"),
+      nama_outfit: formData.get("nama_outfit"),
+      harga: formData.get("harga"),
+      bahan: formData.get("bahan"),
+      warna: formData.get("warna"),
+      gaya: formData.get("gaya"),
+      gambar: fileName, // ✅ SIMPAN FILENAME
+    },
+  ]);
 
-  return NextResponse.json({ message: "Gamis berhasil ditambahkan" });
+  if (error) {
+    return NextResponse.json({ error: error.message }, { status: 500 });
+  }
+
+  return NextResponse.json({ message: "Outfit berhasil ditambahkan" });
 }
 
 /* ================= PUT ================= */
+export const runtime = "nodejs"; // 🔴 WAJIB
+
 export async function PUT(req) {
   const formData = await req.formData();
   const id = formData.get("id_outfit");
 
-  const conn = await pool.getConnection();
+  /* 1️⃣ DATA LAMA */
+  const { data: oldData } = await supabase
+    .from("outfit")
+    .select("gambar")
+    .eq("id_outfit", id)
+    .single();
 
-  // ambil data lama
-  const [[oldData]] = await conn.query(
-    "SELECT gambar FROM Gamis WHERE id_outfit = ?",
-    [id]
-  );
+  let imageName = oldData?.gambar || null;
 
-  let gambarFinal = oldData?.gambar || null;
-
+  /* 2️⃣ FILE BARU */
   const file = formData.get("gambar");
 
-  // === JIKA UPLOAD GAMBAR BARU ===
   if (file && file.size > 0) {
-    // hapus gambar lama
-    if (gambarFinal) {
-      const oldPath = path.join(uploadDir, gambarFinal);
-      if (fs.existsSync(oldPath)) fs.unlinkSync(oldPath);
+    const ext = file.name.split(".").pop();
+    const newFileName = `${Date.now()}.${ext}`;
+
+    /* 🔴 HAPUS GAMBAR LAMA */
+    if (imageName) {
+      await supabase.storage
+        .from("outfit-images")
+        .remove([imageName]);
     }
 
-    // simpan gambar baru
-    const filename = `${Date.now()}-${file.name.replace(/\s+/g, "_")}`;
-    const bytes = await file.arrayBuffer();
-    fs.writeFileSync(path.join(uploadDir, filename), Buffer.from(bytes));
+    /* 🔥 KONVERSI FILE */
+    const arrayBuffer = await file.arrayBuffer();
+    const fileBuffer = new Uint8Array(arrayBuffer);
 
-    gambarFinal = filename;
+    /* 🟢 UPLOAD BARU */
+    const { error: uploadError } = await supabase.storage
+      .from("outfit-images")
+      .upload(newFileName, fileBuffer, {
+        contentType: file.type,
+      });
+
+    if (uploadError) {
+      return NextResponse.json(
+        { error: uploadError.message },
+        { status: 500 }
+      );
+    }
+
+    imageName = newFileName;
   }
 
-  // update data
-  await conn.query(
-    `UPDATE outfit SET
-      kode_outfit=?,
-      nama_outfit=?,
-      harga=?,
-      bahan=?,
-      warna=?,
-      gaya=?,
-      gambar=?
-     WHERE id_outfit=?`,
-    [
-      formData.get("kode_outfit"),
-      formData.get("nama_outfit"),
-      formData.get("harga"),
-      formData.get("bahan"),
-      formData.get("warna"),
-      formData.get("gaya"),
-      gambarFinal,
-      id,
-    ]
-  );
+  /* 3️⃣ UPDATE DB */
+  await supabase
+    .from("outfit")
+    .update({
+      kode_outfit: formData.get("kode_outfit"),
+      nama_outfit: formData.get("nama_outfit"),
+      harga: formData.get("harga"),
+      bahan: formData.get("bahan"),
+      warna: formData.get("warna"),
+      gaya: formData.get("gaya"),
+      gambar: imageName,
+    })
+    .eq("id_outfit", id);
 
-  conn.release();
-
-  return NextResponse.json({ message: "Gamis berhasil diupdate" });
+  return NextResponse.json({ message: "Outfit berhasil diupdate" });
 }
+
 
 
 /* ================= DELETE ================= */
 export async function DELETE(req) {
   const { id_outfit } = await req.json();
-  const conn = await pool.getConnection();
 
-  // ambil nama gambar
-  const [[data]] = await conn.query(
-    "SELECT gambar FROM Gamis WHERE id_outfit = ?",
-    [id_outfit]
-  );
+  const { error } = await supabase
+    .from("outfit")
+    .delete()
+    .eq("id_outfit", id_outfit);
 
-  // hapus file gambar
-  if (data?.gambar) {
-    const filePath = path.join(uploadDir, data.gambar);
-    if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
+  if (error) {
+    return NextResponse.json({ error: error.message }, { status: 500 });
   }
 
-  // hapus data DB
-  await conn.query("DELETE FROM Gamis WHERE id_outfit = ?", [id_outfit]);
-  conn.release();
-
-  return NextResponse.json({ message: "Gamis & gambar berhasil dihapus" });
+  return NextResponse.json({ message: "Outfit berhasil dihapus" });
 }
-

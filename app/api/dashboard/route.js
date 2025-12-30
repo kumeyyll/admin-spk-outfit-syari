@@ -1,66 +1,125 @@
 import { NextResponse } from "next/server";
-import mysql from "mysql2/promise";
+import { createClient } from "@supabase/supabase-js";
 
-const pool = mysql.createPool({
-  host: "localhost",
-  user: "root",
-  password: "",
-  database: "spk_outfit_syari",
-});
+const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL,
+  process.env.SUPABASE_SERVICE_ROLE_KEY // WAJIB service role
+);
 
 export async function GET() {
-  const conn = await pool.getConnection();
-
   try {
-    // jumlah outfit
-    const [[{ totalOutfit }]] = await conn.query(
-      "SELECT COUNT(*) AS totalOutfit FROM outfit"
-    );
+    // =========================
+    // 1. TOTAL OUTFIT
+    // =========================
+    const { count: totalOutfit, error: errOutfit } = await supabase
+      .from("outfit")
+      .select("*", { count: "exact", head: true });
 
-    // jumlah kriteria
-    const [[{ totalKriteria }]] = await conn.query(
-      "SELECT COUNT(*) AS totalKriteria FROM kriteria"
-    );
+    if (errOutfit) throw errOutfit;
 
-    // total penilaian
-    const [[{ totalNilai }]] = await conn.query(
-      "SELECT COUNT(*) AS totalNilai FROM nilai_outfit"
-    );
+    // =========================
+    // 2. TOTAL KRITERIA
+    // =========================
+    const { count: totalKriteria, error: errKriteria } = await supabase
+      .from("kriteria")
+      .select("*", { count: "exact", head: true });
 
-    // outfit terbaik (ranking SAW tertinggi)
-    const [[bestOutfit]] = await conn.query(`
-      SELECT o.nama_outfit, SUM(
-        CASE 
-          WHEN k.tipe = 'benefit' THEN (n.nilai / max_n.max_val) * k.bobot
-          ELSE (min_n.min_val / n.nilai) * k.bobot
-        END
-      ) AS skor
-      FROM nilai_outfit n
-      JOIN outfit o ON o.id_outfit = n.id_outfit
-      JOIN kriteria k ON k.id_kriteria = n.id_kriteria
-      JOIN (
-        SELECT id_kriteria, MAX(nilai) AS max_val
-        FROM nilai_outfit GROUP BY id_kriteria
-      ) max_n ON max_n.id_kriteria = n.id_kriteria
-      JOIN (
-        SELECT id_kriteria, MIN(nilai) AS min_val
-        FROM nilai_outfit GROUP BY id_kriteria
-      ) min_n ON min_n.id_kriteria = n.id_kriteria
-      GROUP BY o.id_outfit
-      ORDER BY skor DESC
-      LIMIT 1
-    `);
+    if (errKriteria) throw errKriteria;
 
-    conn.release();
+    // =========================
+    // 3. TOTAL NILAI
+    // =========================
+    const { count: totalNilai, error: errNilai } = await supabase
+      .from("nilai_outfit")
+      .select("*", { count: "exact", head: true });
+
+    if (errNilai) throw errNilai;
+
+    // =========================
+    // 4. AMBIL SEMUA DATA SAW
+    // =========================
+    const { data: nilaiData, error: errSAW } = await supabase
+      .from("nilai_outfit")
+      .select(`
+        id_outfit,
+        nilai,
+        outfit ( nama_outfit ),
+        kriteria ( id_kriteria, bobot, tipe )
+      `);
+
+    if (errSAW) throw errSAW;
+
+    if (!nilaiData || nilaiData.length === 0) {
+      return NextResponse.json({
+        totalOutfit,
+        totalKriteria,
+        totalNilai,
+        outfitTerbaik: "-"
+      });
+    }
+
+    // =========================
+    // 5. HITUNG MAX & MIN PER KRITERIA
+    // =========================
+    const maxMin = {};
+
+    nilaiData.forEach((item) => {
+      const id = item.kriteria.id_kriteria;
+      if (!maxMin[id]) {
+        maxMin[id] = { max: item.nilai, min: item.nilai };
+      } else {
+        maxMin[id].max = Math.max(maxMin[id].max, item.nilai);
+        maxMin[id].min = Math.min(maxMin[id].min, item.nilai);
+      }
+    });
+
+    // =========================
+    // 6. HITUNG SKOR SAW
+    // =========================
+    const skorOutfit = {};
+
+    nilaiData.forEach((item) => {
+      const idOutfit = item.id_outfit;
+      const { bobot, tipe, id_kriteria } = item.kriteria;
+
+      let nilaiNormalisasi = 0;
+
+      if (tipe === "benefit") {
+        nilaiNormalisasi = item.nilai / maxMin[id_kriteria].max;
+      } else {
+        nilaiNormalisasi = maxMin[id_kriteria].min / item.nilai;
+      }
+
+      const skor = nilaiNormalisasi * bobot;
+
+      if (!skorOutfit[idOutfit]) {
+        skorOutfit[idOutfit] = {
+          nama_outfit: item.outfit.nama_outfit,
+          skor: 0
+        };
+      }
+
+      skorOutfit[idOutfit].skor += skor;
+    });
+
+    // =========================
+    // 7. CARI OUTFIT TERBAIK
+    // =========================
+    const outfitTerbaik = Object.values(skorOutfit)
+      .sort((a, b) => b.skor - a.skor)[0];
 
     return NextResponse.json({
       totalOutfit,
       totalKriteria,
       totalNilai,
-      outfitTerbaik: bestOutfit?.nama_outfit || "-",
+      outfitTerbaik: outfitTerbaik?.nama_outfit || "-"
     });
-  } catch (err) {
-    conn.release();
-    return NextResponse.json({ message: "Dashboard error" }, { status: 500 });
+
+  } catch (error) {
+    console.error("Dashboard Error:", error);
+    return NextResponse.json(
+      { message: "Dashboard error" },
+      { status: 500 }
+    );
   }
 }

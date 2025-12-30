@@ -1,119 +1,121 @@
-// app/api/kriteria/route.js
-import { NextResponse } from 'next/server';
-import mysql from 'mysql2/promise';
+import { NextResponse } from "next/server";
+import { createClient } from "@supabase/supabase-js";
 
-const dbConfig = {
-    host: 'localhost',
-    user: 'root',
-    password: '',
-    database: 'spk_outfit_syari'
-};
+const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL,
+  process.env.SUPABASE_SERVICE_ROLE_KEY // ⚠️ server only
+);
 
-const pool = mysql.createPool(dbConfig);
-
-// 1. FUNGSI GET (Mengambil Semua Data)
+/* ================= GET ================= */
 export async function GET() {
-    try {
-        const connection = await pool.getConnection();
-        const [rows] = await connection.query('SELECT id_nilai, id_outfit, id_kriteria, nilai FROM nilai_outfit');
-        connection.release();
-        
-        return NextResponse.json({
-            message: "Data nilai_outfit berhasil diambil",
-            data: rows,
-        }, {
-            status: 200
-        });
-    } catch (error) {
-        console.error('Database error:', error);
-        return NextResponse.json({ message: "Gagal mengambil data dari database" }, { status: 500 });
-    }
+  const { data, error } = await supabase
+    .from("nilai_outfit")
+    .select("id_nilai, id_outfit, id_kriteria, nilai")
+    .order("id_nilai", { ascending: true });
+
+  if (error) {
+    return NextResponse.json(
+      { message: error.message },
+      { status: 500 }
+    );
+  }
+
+  return NextResponse.json({
+    message: "Data nilai_outfit berhasil diambil",
+    data,
+  });
 }
 
-// 2. FUNGSI POST (Menambahkan Data Baru)
-export async function POST(request) {
-    try {
-        const Newnilaioutfit = await request.json();
+/* ================= POST ================= */
+export async function POST(req) {
+  const body = await req.json();
 
-        if (!Newnilaioutfit.id_outfit || !Newnilaioutfit.id_kriteria || !Newnilaioutfit.nilai) {
-            return NextResponse.json({
-                message: "Data nilai_outfit tidak lengkap. ID Outfit, ID Kriteria, dan Nilai wajib diisi."
-            }, { status: 400 });
-        }
+  if (!body.id_outfit || !body.id_kriteria || body.nilai === undefined) {
+    return NextResponse.json(
+      { message: "ID Outfit, ID Kriteria, dan Nilai wajib diisi" },
+      { status: 400 }
+    );
+  }
 
-        const connection = await pool.getConnection();
-        const [result] = await connection.query(
-            'INSERT INTO nilai_outfit (id_outfit, id_kriteria, nilai) VALUES (?, ?, ?)',
-            [Newnilaioutfit.id_outfit, Newnilaioutfit.id_kriteria, Newnilaioutfit.nilai]
-        );
-        connection.release();
+  const { error } = await supabase
+    .from("nilai_outfit")
+    .insert([
+      {
+        id_outfit: body.id_outfit,
+        id_kriteria: body.id_kriteria,
+        nilai: body.nilai,
+      },
+    ]);
 
-        return NextResponse.json({
-            message: "nilai_outfit berhasil ditambahkan",
-            data: Newnilaioutfit
-        }, { status: 201 });
+  if (error) {
+    return NextResponse.json(
+      { message: error.message },
+      { status: 500 }
+    );
+  }
 
-    } catch (error) {
-        console.error('Database error:', error);
-        return NextResponse.json({ message: "Gagal menambahkan data ke database" }, { status: 500 });
-    }
+  return NextResponse.json(
+    { message: "nilai_outfit berhasil ditambahkan" },
+    { status: 201 }
+  );
 }
 
-// 3. FUNGSI PUT (Mengupdate Data)
-export async function PUT(request) {
-    try {
-        const updatedData = await request.json();
-        const { id_outfit, id_kriteria } = updatedData;
+/* ================= PUT ================= */
+export async function PUT(req) {
+  const body = await req.json();
 
-        if (!id_outfit || !id_kriteria) {
-            return NextResponse.json({ message: "ID Outfit dan ID Kriteria wajib disertakan" }, { status: 400 });
-        }
+  if (!body.id_nilai) {
+    return NextResponse.json(
+      { message: "ID Nilai wajib disertakan" },
+      { status: 400 }
+    );
+  }
 
-        const connection = await pool.getConnection();
-        const [result] = await connection.query(
-            'UPDATE nilai_outfit SET id_outfit = ?, id_kriteria = ?, nilai = ? WHERE id_nilai = ?',
-            [updatedData.id_outfit, updatedData.id_kriteria, updatedData.nilai, updatedData.id_nilai]
-        );
-        connection.release();
+  const { error } = await supabase
+    .from("nilai_outfit")
+    .update({
+      id_outfit: body.id_outfit,
+      id_kriteria: body.id_kriteria,
+      nilai: body.nilai,
+    })
+    .eq("id_nilai", body.id_nilai);
 
-        if (result.affectedRows === 0) {
-            return NextResponse.json({ message: `Data dengan ID ${id_nilai} tidak ditemukan` }, { status: 404 });
-        }
+  if (error) {
+    return NextResponse.json(
+      { message: error.message },
+      { status: 500 }
+    );
+  }
 
-        return NextResponse.json({
-            message: "Data nilai_outfit berhasil diupdate",
-            data: updatedData
-        }, { status: 200 });
-
-    } catch (error) {
-        console.error('Database error:', error);
-        return NextResponse.json({ message: "Gagal mengupdate data di database" }, { status: 500 });
-    }
+  return NextResponse.json({
+    message: "Data nilai_outfit berhasil diupdate",
+  });
 }
 
-// 4. FUNGSI DELETE (Menghapus Data)
-export async function DELETE(request) {
-    try {
-        const { id_nilai } = await request.json();
+/* ================= DELETE ================= */
+export async function DELETE(req) {
+  const { id_nilai } = await req.json();
 
-        if (!id_nilai) {
-            return NextResponse.json({ message: "ID wajib disertakan" }, { status: 400 });
-        }
+  if (!id_nilai) {
+    return NextResponse.json(
+      { message: "ID Nilai wajib disertakan" },
+      { status: 400 }
+    );
+  }
 
-        const connection = await pool.getConnection();
-        const [result] = await connection.query('DELETE FROM nilai_outfit WHERE id_nilai = ?', [id_nilai]);
-        connection.release();
+  const { error } = await supabase
+    .from("nilai_outfit")
+    .delete()
+    .eq("id_nilai", id_nilai);
 
-        if (result.affectedRows === 0) {
-            return NextResponse.json({ message: `nilai_outfit dengan ID ${id_nilai} tidak ditemukan` }, { status: 404 });
-        }
+  if (error) {
+    return NextResponse.json(
+      { message: error.message },
+      { status: 500 }
+    );
+  }
 
-        return NextResponse.json({
-            message: `nilai_outfit dengan ID ${id_nilai} berhasil dihapus`
-        }, { status: 200 });
-
-    } catch (error) {
-        console.error('Database error:', error);
-        return NextResponse.json({ message: "Gagal menghapus data dari database" }, { status: 500 });
-    }
+  return NextResponse.json({
+    message: "nilai_outfit berhasil dihapus",
+  });
 }

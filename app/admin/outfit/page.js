@@ -4,7 +4,7 @@ import React, { useEffect, useState, useMemo } from "react";
 import { createPortal } from "react-dom";
 
 export default function DataOutfitPage() {
-  const API_BASE = "http://localhost:3001/api/outfit";
+  const API_BASE = "/api/outfit";
 
   const [outfit, setOutfit] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -73,28 +73,32 @@ export default function DataOutfitPage() {
   }
 
   async function handleSubmit(e) {
-    e.preventDefault();
-    const formData = new FormData();
+  e.preventDefault();
+  const formData = new FormData();
 
-    Object.keys(form).forEach((key) => {
-      if (form[key] !== null) formData.append(key, form[key]);
-    });
+  Object.keys(form).forEach((key) => {
+    if (form[key] !== null) formData.append(key, form[key]);
+  });
 
-    if (gambar) formData.append("gambar", gambar);
-
-    const res = await fetch(API_BASE, {
-      method: isEditing ? "PUT" : "POST",
-      body: formData,
-    });
-
-    if (!res.ok) {
-      alert("Gagal menyimpan data");
-      return;
-    }
-
-    setModalOpen(false);
-    fetchData();
+  if (gambar instanceof File) {
+    formData.append("gambar", gambar);
   }
+
+  const res = await fetch(API_BASE, {
+    method: isEditing ? "PUT" : "POST",
+    body: formData,
+  });
+
+  if (!res.ok) {
+    alert("Gagal menyimpan data");
+    return;
+  }
+
+  setGambar(null); // 🔥 WAJIB
+  setModalOpen(false);
+  fetchData();
+}
+
 
   async function handleDelete(id) {
     if (!confirm("Hapus Gamis ini?")) return;
@@ -178,12 +182,11 @@ export default function DataOutfitPage() {
                 <td>{item.warna}</td>
                 <td>{item.gaya}</td>
                 <td>
-                  {item.gambar && (
-                    <img
-                      src={`/uploads/${item.gambar}`}
-                      className="w-16 h-16 mx-auto rounded"
-                    />
-                  )}
+                  <img
+  src={`${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/outfit-images/${item.gambar}`}
+  className="w-16 h-16 mx-auto rounded"
+/>
+
                 </td>
                 <td>
                   <button onClick={() => openEdit(item)}>✏️</button>
