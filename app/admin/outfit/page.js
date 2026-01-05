@@ -11,6 +11,11 @@ export default function DataOutfitPage() {
   const [error, setError] = useState(null);
   const [gambar, setGambar] = useState(null);
 
+  const [listWarna, setListWarna] = useState([]);
+const [listBahan, setListBahan] = useState([]);
+const [listGaya, setListGaya] = useState([]);
+
+
   const [modalOpen, setModalOpen] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
 
@@ -26,13 +31,16 @@ export default function DataOutfitPage() {
     kode_outfit: "",
     nama_outfit: "",
     harga: "",
-    bahan: "",
-    warna: "",
-    gaya: "",
+    id_warna: "",
+    id_bahan: "",
+    id_gaya: "",
   });
 
   useEffect(() => {
     fetchData();
+    fetch("/api/warna").then(r => r.json()).then(d => setListWarna(d.data));
+  fetch("/api/bahan").then(r => r.json()).then(d => setListBahan(d.data));
+  fetch("/api/gaya").then(r => r.json()).then(d => setListGaya(d.data));
   }, []);
 
   async function fetchData() {
@@ -57,9 +65,9 @@ export default function DataOutfitPage() {
       kode_outfit: "",
       nama_outfit: "",
       harga: "",
-      bahan: "",
-      warna: "",
-      gaya: "",
+      id_warna: "",
+      id_bahan: "",
+      id_gaya: "",
     });
     setGambar(null);
     setModalOpen(true);
@@ -67,8 +75,15 @@ export default function DataOutfitPage() {
 
   function openEdit(item) {
     setIsEditing(true);
-    setForm(item);
-    setGambar(null);
+    setForm({
+      id_outfit: item.id_outfit,
+      kode_outfit: item.kode_outfit,
+      nama_outfit: item.nama_outfit,
+      harga: item.harga,
+      id_warna: item.warna.id_warna,
+      id_bahan: item.bahan.id_bahan,
+      id_gaya: item.gaya.id_gaya,
+    });
     setModalOpen(true);
   }
 
@@ -117,7 +132,7 @@ export default function DataOutfitPage() {
   ========================== */
   const filteredData = useMemo(() => {
     return outfit.filter((o) =>
-      `${o.kode_outfit} ${o.nama_outfit} ${o.bahan} ${o.warna} ${o.gaya}`
+      `${o.kode_outfit} ${o.nama_outfit} ${o.nama_bahan} ${o.nama_warna} ${o.nama_gaya}`
         .toLowerCase()
         .includes(search.toLowerCase())
     );
@@ -178,9 +193,9 @@ export default function DataOutfitPage() {
                 <td>{item.kode_outfit}</td>
                 <td>{item.nama_outfit}</td>
                 <td>{item.harga}</td>
-                <td>{item.bahan}</td>
-                <td>{item.warna}</td>
-                <td>{item.gaya}</td>
+                <td>{item.bahan?.nama_bahan}</td>
+<td>{item.warna?.nama_warna}</td>
+<td>{item.gaya?.nama_gaya}</td>
                 <td>
                   <img
   src={`${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/outfit-images/${item.gambar}`}
@@ -239,37 +254,106 @@ export default function DataOutfitPage() {
               onClick={() => setModalOpen(false)}
             />
             <form
-              onSubmit={handleSubmit}
-              className="relative bg-white rounded-xl p-6 z-10 w-[90%] max-w-xl"
-            >
-              <h2 className="text-xl mb-4">
-                {isEditing ? "Edit Gamis" : "Tambah Gamis"}
-              </h2>
+  onSubmit={handleSubmit}
+  className="relative bg-white rounded-xl p-6 z-10 w-[90%] max-w-xl"
+>
+  <h2 className="text-xl mb-4">
+    {isEditing ? "Edit Gamis" : "Tambah Gamis"}
+  </h2>
 
-              {["kode_outfit","nama_outfit","harga","bahan","warna","gaya"].map((f) => (
-                <input
-                  key={f}
-                  value={form[f] ?? ""}
-                  onChange={(e) =>
-                    setForm((s) => ({ ...s, [f]: e.target.value }))
-                  }
-                  placeholder={f.replace("_"," ")}
-                  className="w-full mb-2 p-2 border rounded"
-                  required
-                />
-              ))}
+  {/* KODE */}
+  <input
+    value={form.kode_outfit}
+    onChange={(e) => setForm(s => ({ ...s, kode_outfit: e.target.value }))}
+    placeholder="Kode Outfit"
+    className="w-full mb-2 p-2 border rounded"
+    required
+  />
 
-              <input type="file" onChange={(e) => setGambar(e.target.files[0])} />
+  {/* NAMA */}
+  <input
+    value={form.nama_outfit}
+    onChange={(e) => setForm(s => ({ ...s, nama_outfit: e.target.value }))}
+    placeholder="Nama Outfit"
+    className="w-full mb-2 p-2 border rounded"
+    required
+  />
 
-              <div className="flex justify-end gap-2 mt-4">
-                <button type="button" onClick={() => setModalOpen(false)}>
-                  Batal
-                </button>
-                <button type="submit" className="bg-[#E8B4B8] text-white px-4 py-2 rounded">
-                  Simpan
-                </button>
-              </div>
-            </form>
+  {/* HARGA */}
+  <input
+    type="number"
+    value={form.harga}
+    onChange={(e) => setForm(s => ({ ...s, harga: e.target.value }))}
+    placeholder="Harga"
+    className="w-full mb-2 p-2 border rounded"
+    required
+  />
+
+  {/* WARNA */}
+  <select
+    value={form.id_warna}
+    onChange={(e) => setForm(s => ({ ...s, id_warna: e.target.value }))}
+    className="w-full mb-2 p-2 border rounded"
+    required
+  >
+    <option value="">-- Pilih Warna --</option>
+    {listWarna.map(w => (
+      <option key={w.id_warna} value={w.id_warna}>
+        {w.nama_warna}
+      </option>
+    ))}
+  </select>
+
+  {/* BAHAN */}
+  <select
+    value={form.id_bahan}
+    onChange={(e) => setForm(s => ({ ...s, id_bahan: e.target.value }))}
+    className="w-full mb-2 p-2 border rounded"
+    required
+  >
+    <option value="">-- Pilih Bahan --</option>
+    {listBahan.map(b => (
+      <option key={b.id_bahan} value={b.id_bahan}>
+        {b.nama_bahan}
+      </option>
+    ))}
+  </select>
+
+  {/* GAYA */}
+  <select
+    value={form.id_gaya}
+    onChange={(e) => setForm(s => ({ ...s, id_gaya: e.target.value }))}
+    className="w-full mb-2 p-2 border rounded"
+    required
+  >
+    <option value="">-- Pilih Gaya --</option>
+    {listGaya.map(g => (
+      <option key={g.id_gaya} value={g.id_gaya}>
+        {g.nama_gaya}
+      </option>
+    ))}
+  </select>
+
+  {/* GAMBAR */}
+  <input
+    type="file"
+    onChange={(e) => setGambar(e.target.files[0])}
+    className="mb-4"
+  />
+
+  <div className="flex justify-end gap-2">
+    <button type="button" onClick={() => setModalOpen(false)}>
+      Batal
+    </button>
+    <button
+      type="submit"
+      className="bg-[#E8B4B8] text-white px-4 py-2 rounded"
+    >
+      Simpan
+    </button>
+  </div>
+</form>
+
           </div>,
           document.body
         )}

@@ -11,6 +11,9 @@ export default function AdminLayout({ children }) {
           {[
             { name: "🏠 Dashboard", path: "/admin/dashboard" },
             { name: "🧾 Data Kriteria", path: "/admin/kriteria" },
+            { name: "🧾 Data Warna", path: "/admin/warna" },
+            { name: "🧾 Data Bahan", path: "/admin/bahan" },
+            { name: "🧾 Data Gaya", path: "/admin/gaya" },
             { name: "👗 Data Alternatif (Gamis)", path: "/admin/outfit" },
             { name: "⭐ Nilai Kriteria / Penilaian", path: "/admin/nilai" },
             // { name: "📊 Hasil Perhitungan SAW", path: "/admin/hasil" },
